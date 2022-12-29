@@ -32,7 +32,7 @@ def ode_derivs(phi: np.ndarray, t: float, g: float, length: float) -> np.ndarray
 
 
 class Pendulum:
-    def __init__(self, length: float, g: float, dt: float, dur: float, init: np.ndarray):
+    def __init__(self, length: float, g: float, time_step: float, duration: float, init: np.ndarray):
         """
         Class that serves as wrapper for solving the non-linear equation of motion of a pendulum with moving base in 2D.
 
@@ -56,11 +56,11 @@ class Pendulum:
 
         """
         self.length = length
-        self.dt = dt
-        self.dur = dur
+        self.time_step = time_step
+        self.duration = duration
         self.init = init
         self.g = g
-        self.t = np.arange(0, self.dur, dt)
+        self.t = np.arange(0, self.duration, dt)
         self.sol = None
 
     @property
@@ -76,7 +76,7 @@ class Pendulum:
         method that solves the differential equations
         Returns
         -------
-        sol_x: odeint solution for motion in x-z plane
+        sol: odeint solution
 
         """
         self.sol = odeint(
@@ -89,6 +89,12 @@ class Pendulum:
 
         return self.sol
 
+    def plot_results(self):
+        plt.figure()
+        plt.plot(pendulum.t, pendulum.sol[:, 0])
+        plt.plot(pendulum.t, pendulum.sol[:, 1])
+        plt.grid()
+
 
 if __name__ == "__main__":
     # input parameters
@@ -97,12 +103,12 @@ if __name__ == "__main__":
     dur = 50  # s
     init = np.array([0.16, -0.15])  # init
     gravity = 9.81
-    pendulum = Pendulum(length=L, g=gravity, dt=dt, dur=dur, init=init)
+    pendulum = Pendulum(length=L, g=gravity, time_step=dt, duration=dur, init=init)
     print(pendulum.eigen_period)
     sol = pendulum.solve()
+    pendulum.plot_results()
     print(sol)
-    plt.plot(pendulum.t, pendulum.sol[:, 0])
-    plt.plot(pendulum.t, pendulum.sol[:, 1])
+
 
 
 
