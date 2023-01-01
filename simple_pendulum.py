@@ -4,9 +4,9 @@ import numpy as np
 import pandas as pd
 from scipy.integrate import odeint
 from scipy.interpolate import interp1d
-import matplotlib.pyplot as plt
 import plotly.graph_objects as go
-
+import plotly
+import plotly.express as px
 
 @dataclass
 class ForcingData:
@@ -54,11 +54,17 @@ class Pendulum:
 
     @property
     def eigen_period(self) -> float:
-        return 2 * np.pi * np.sqrt(self.g / self.length)  # s
+        """"
+        Eigenperiod of the pendulum [s]
+        """
+        return 2 * np.pi * np.sqrt(self.g / self.length)
 
     @property
     def eigen_frequency(self) -> float:
-        return np.sqrt(self.length / self.g)  # rad/s
+        """"
+        Eigenfrequency of the pendulum in [rad/s]
+        """
+        return np.sqrt(self.length / self.g)
 
     @staticmethod
     def ode_derivatives(dydt: np.ndarray, t: float, g: float, length: float,
@@ -66,7 +72,7 @@ class Pendulum:
         """
         d2/dt2 L theta (t) + (d2/dt2 X(t)) * cos(theta(t)) + (d2/dt2 * Y(t) + g) * sin(theta(t)) = 0
 
-        solves ode for 2D-pendulum in x-z plane with moving support
+        solves ode for 2D-pendulum in x-y plane with moving support
         phi = theta
         phi_dot = d theta/dt
         phi = [phi, phi_dot]
@@ -78,9 +84,11 @@ class Pendulum:
         # moving support accelerations
         x_acc_t = x_acceleration_func(t)
         y_acc_t = y_acceleration_func(t)
+
+        # external forcing
         forcing = 0
 
-        # give derivatives for equation in x-z plane
+        # give derivatives for equation in x-y plane
         theta_dot = phi_dot
         theta_dot_dot = (- x_acc_t * np.cos(phi) - (g + y_acc_t) * np.sin(phi)) / (length * np.cos(phi)) + forcing
 
@@ -110,7 +118,7 @@ class Pendulum:
 
         return x_acc, y_acc
 
-    def solve(self):
+    def solve(self) -> np.ndarray:
         """
         method that solves the differential equations
         Returns
@@ -121,77 +129,110 @@ class Pendulum:
 
         x_accelerations, y_accelerations = self.interpolate_forcing()
 
-        self.sol = odeint(
-            self.ode_derivatives,
-            self.init,
-            self.t,
-            args=(self.g, self.length, x_accelerations, y_accelerations),
-            full_output=False
+        self.sol = np.array(
+            odeint(
+                self.ode_derivatives,
+                self.init,
+                self.t,
+                args=(self.g, self.length, x_accelerations, y_accelerations),
+                full_output=False)
         )
 
         return self.sol
 
-    def plot_results(self):
-        plt.figure()
-        plt.plot(self.t, self.sol[:, 0])
-        plt.plot(self.t, self.sol[:, 1])
-        plt.grid()
-
-    @staticmethod
-    def frame_args(duration):
-        """"
+    def animate(self, sol: np.array, animation_time_scaler: float = 10) -> go.Figure:
 
         """
-        return {
-            "frame": {"duration": duration},
-            "mode": "immediate",
-            "fromcurrent": True,
-            "transition": {"duration": duration, "easing": "linear"},
-        }
+        Method that plots an animation of the pendulum motion with the plotly library
 
-    def animate(self, sol: np.array):
+        Returns
+        -------
+        fig: go.Figure() instance
+
+        """
+
         theta, theta_dot = sol[:, 0], sol[:, 1]
 
         x_motion = interp1d(self.forcing.t_motion_base, self.forcing.x_motion_base)
         y_motion = interp1d(self.forcing.t_motion_base, self.forcing.y_motion_base)
 
-        mass_x = np.sin(theta)*self.length + x_motion(self.t)
-        mass_y = -self.length*np.cos(theta) + y_motion(self.t)
+        mass_x = self.length * np.sin(theta) + x_motion(self.t)
+        mass_y = -self.length * np.cos(theta) + y_motion(self.t)
 
-        # number of frames
-        nb_frames = len(self.t)
+        # resample results at specified frame rate
+        resampled_time = self.t[0::animation_time_scaler]
+        nb_frames = len(resampled_time)
+        resampled_x_base = x_motion(resampled_time)
+        resampled_y_base = y_motion(resampled_time)
+        resampled_x = mass_x[0::animation_time_scaler]
+        resampled_y = mass_y[0::animation_time_scaler]
 
-        fig = go.Figure(
-            data=go.Scatter(x=[x_motion(0), mass_x[0]], y=[y_motion(0), mass_y[0]]),
-            layout=go.Layout(
-                xaxis=dict(range=[np.min(mass_x)-1, np.max(mass_x)+1], autorange=False),
-                yaxis=dict(range=[np.min(mass_y)-1, 1], autorange=False, scaleanchor="x", scaleratio=1),
-                title="Pendulum with Moving Base",
-                updatemenus=[
+        # make figure
+        fig_dict = {
+            "data":[go.Scatter(x=[x_motion(0), mass_x[0]], y=[y_motion(0), mass_y[0]])],
+            "layout": {},
+            "frames": [
+                    go.Frame(data=go.Scatter(x=[resampled_x_base[k], resampled_x[k]], y=[resampled_y_base[k], resampled_y[k]]),
+                             name=str(k)) for k in range(nb_frames)
+                ]
+        }
+
+        # fill in most of layout
+        fig_dict["layout"]["xaxis"] = dict(range=[np.min(mass_x)-1, np.max(mass_x)+1], autorange=False)
+        fig_dict["layout"]["yaxis"] = dict(range=[np.min(mass_y)-1, 1], autorange=False, scaleanchor="x", scaleratio=1)
+        fig_dict["layout"]["updatemenus"] = [
                     {
-                        "buttons": [
-                            {
-                                "args": [None, self.frame_args(1)],
-                                "label": "&#9654;",  # play symbol
-                                "method": "animate",
-                            },
-                            {
-                                "args": [[None], self.frame_args(0)],
-                                "label": "&#9724;",  # pause symbol
-                                "method": "animate",
-                            },
-                        ],
+                        "buttons":
+                            [
+                             {"args": [None, {"frame": {"duration": 1}, "mode": "immediate",
+                                              "fromcurrent": True}
+                                       ],
+                              "label": "Play",
+                              "method": "animate"},
+                             {"args": [[None], {"frame": {"duration": 0}, "mode": "immediate",
+                                                "fromcurrent": True}
+                                       ],
+                              "label": "Pause",
+                              "method": "animate"}
+                            ],
                         "direction": "left",
                         "pad": {"r": 10, "t": 70},
                         "type": "buttons",
                         "x": 0.1,
-                        "y": 0,
+                        "y": 0
                     }
-                ]),
-            frames=[
-                go.Frame(data=go.Scatter(x=[x_motion(self.t[k]), mass_x[k]], y=[y_motion(self.t[k]), mass_y[k]]), name=str(k)) for k in range(nb_frames)
-            ]
-        )
+                ]
+
+        sliders_dict = {
+            "active": 0,
+            "yanchor": "top",
+            "xanchor": "left",
+            "currentvalue": {
+                "font": {"size": 20},
+                "prefix": "Time:",
+                "visible": True,
+                "xanchor": "right"
+            },
+            "pad": {"b": 10, "t": 50},
+            "len": 0.9,
+            "x": 0.1,
+            "y": 0,
+            "steps": []
+        }
+
+        # make frames
+        for i, t_step in enumerate(resampled_time):
+            slider_step = {"args": [
+                [i],
+                {"frame": {"duration": 1, "redraw": False},
+                 "mode": "immediate"}
+            ],
+                "label": np.round(t_step,3),
+                "method": "animate"}
+            sliders_dict["steps"].append(slider_step)
+
+        fig_dict["layout"]["sliders"] = [sliders_dict]
+        fig = go.Figure(fig_dict)
 
         fig.show()
 
@@ -200,10 +241,10 @@ class Pendulum:
 
 if __name__ == "__main__":
     # input parameters
-    L = 3  # m
-    dt = 0.01  # s
-    dur = 50  # s
-    init = np.array([0.01, 0])  # init
+    L = 5  # m
+    dt = 0.1  # s
+    dur = 150  # s
+    initial_conditions = np.array([0.2, 0])  # init
     gravity = 9.81
 
     motion_data = pd.read_csv("sample_data_1.csv")
@@ -216,10 +257,7 @@ if __name__ == "__main__":
         external_forcing=np.zeros_like(np.array(motion_data["Y (m)"]))
     )
 
-    pendulum = Pendulum(length=L, g=gravity, time_step=dt, duration=dur, init=init, forcing=forcing_parameters)
+    pendulum = Pendulum(length=L, g=gravity, time_step=dt, duration=dur, init=initial_conditions,
+                        forcing=forcing_parameters)
     pendulum.solve()
-    pendulum.animate(pendulum.sol)
-
-
-
-
+    fig_animation = pendulum.animate(pendulum.sol, animation_time_scaler=3)
