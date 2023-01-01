@@ -83,7 +83,7 @@ class Pendulum:
         self.duration = duration
         self.init = init
         self.g = g
-        self.t = np.arange(0, self.duration, dt)
+        self.t = np.arange(0, self.duration, self.time_step)
         self.forcing = forcing
         self.sol = None
 
@@ -243,6 +243,7 @@ class Pendulum:
         # fill in most of layout
         fig_dict["layout"]["xaxis"] = dict(range=[np.min(mass_x)-1, np.max(mass_x)+1], autorange=False)
         fig_dict["layout"]["yaxis"] = dict(range=[np.min(mass_y)-1, 1], autorange=False, scaleanchor="x", scaleratio=1)
+        fig_dict["layout"]["title"] = "Pendulum with moving base"
         fig_dict["layout"]["updatemenus"] = [
                     {
                         "buttons":
@@ -299,27 +300,3 @@ class Pendulum:
         fig.show()
 
         return fig
-
-
-if __name__ == "__main__":
-    # input parameters
-    L = 5  # m
-    dt = 0.1  # s
-    dur = 200  # s
-    initial_conditions = np.array([0.2, 0])  # init
-    gravity = 9.81
-
-    motion_data = pd.read_csv("sample_data_1.csv")
-
-    # forcing parameters
-    forcing_parameters = ForcingData(
-        t_motion_base=np.array(motion_data["Time (s)"]),
-        x_motion_base=np.array(motion_data["X (m)"]),
-        y_motion_base=np.array(motion_data["Y (m)"]),
-        external_forcing=np.zeros_like(np.array(motion_data["Y (m)"]))
-    )
-
-    pendulum = Pendulum(length=L, g=gravity, time_step=dt, duration=dur, init=initial_conditions,
-                        forcing=forcing_parameters)
-    pendulum.solve()
-    fig_animation = pendulum.animate(pendulum.sol, animation_time_scaler=3)
